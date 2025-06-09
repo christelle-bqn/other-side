@@ -37,6 +37,18 @@ connection_status = "Disconnected"
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.settimeout(1.0)  # Timeout de 1 seconde
 
+def zoom_frame(frame, zoom_factor=1.5):
+    h, w = frame.shape[:2]
+    new_w, new_h = int(w / zoom_factor), int(h / zoom_factor)
+    
+    start_x = (w - new_w) // 2
+    start_y = (h - new_h) // 2
+    
+    cropped = frame[start_y:start_y+new_h, start_x:start_x+new_w]
+    zoomed = cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
+    
+    return zoomed
+
 def connect_to_esp32():
     try:
         sock.connect((ESP32_IP, ESP32_PORT))
@@ -74,6 +86,7 @@ while True:
         continue
 
     frame = cv2.flip(frame, 1)
+    frame = zoom_frame(frame, zoom_factor=2.5) 
 
     # Segmentation de la silhouette
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)    
