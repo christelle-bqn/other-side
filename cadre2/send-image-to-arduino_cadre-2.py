@@ -3,6 +3,8 @@ import numpy as np
 import time
 import mediapipe as mp
 import socket
+from PIL import Image
+
 
 # CONFIGURATION
 ESP32_IP = '172.20.10.3'  # IP de l'ESP32
@@ -15,6 +17,11 @@ TOTAL_HEIGHT = PANEL_HEIGHT * 2
 NUM_PIXELS = TOTAL_WIDTH * TOTAL_HEIGHT
 BRIGHTNESS_MIN = 10
 SEND_INTERVAL = 1 / 15   # ≈15 FPS
+DELAY_IN_SECONDS = 1     # délai avant d'afficher la silhouette
+DELAY_OUT_SECONDS = 2    # délai avant de revenir au logo
+presence_detected = False
+last_state_change_time = time.time()
+show_silhouette = False
 
 # Offsets des panneaux (de 0 à 16 sur une matrice 16x16)
 PANEL_OFFSETS = [
@@ -29,13 +36,28 @@ mp_selfie = mp.solutions.selfie_segmentation
 segmenter = mp_selfie.SelfieSegmentation(model_selection=1)
 
 # Webcam
-cap = cv2.VideoCapture(2)
+cap = cv2.VideoCapture(0)
 last_send_time = 0
 connection_status = "Disconnected"
 
 # Initialisation socket TCP
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.settimeout(1.0)  # Timeout de 1 seconde
+
+def load_logo_with_padding(path, target_size=(TOTAL_WIDTH, TOTAL_HEIGHT), bg_color=(0, 0, 0)):
+    # Charger et convertir l'image
+    img = Image.open(path).convert("RGB")
+    
+    # Calculer le ratio de redimensionnement
+    img.thumbnail(target_size)
+    new_img = Image.new("RGB", target_size, bg_color)
+    
+    # Centrage de l'image
+    offset_x = (target_size[0] - img.size[0]) // 2
+    offset_y = (target_size[1] - img.size[1]) // 2
+    new_img.paste(img, (offset_x, offset_y))
+    
+    return np.array(new_img)
 
 def zoom_frame(frame, zoom_factor=1.5):
     h, w = frame.shape[:2]
@@ -93,6 +115,30 @@ while True:
     results = segmenter.process(frame_rgb)
     mask = (results.segmentation_mask > 0.5).astype(np.uint8)
 
+    # Calcul du pourcentage de pixels détectés comme silhouette
+    presence_ratio = np.sum(mask) / (mask.shape[0] * mask.shape[1])
+
+     # Seuil de détection 
+    PRESENCE_THRESHOLD = 0.05  # 5 % de la zone
+
+    # Détection présence
+    current_time = time.time()
+
+    if presence_ratio > PRESENCE_THRESHOLD:
+        if not presence_detected:
+            presence_detected = True
+            last_state_change_time = current_time
+        # attendre DELAY_IN_SECONDS avant d'afficher la silhouette
+        if not show_silhouette and (current_time - last_state_change_time) >= DELAY_IN_SECONDS:
+            show_silhouette = True
+    else:
+        if presence_detected:
+            presence_detected = False
+            last_state_change_time = current_time
+        # attendre DELAY_OUT_SECONDS avant de revenir au logo
+        if show_silhouette and (current_time - last_state_change_time) >= DELAY_OUT_SECONDS:
+            show_silhouette = False
+
     # Appliquer masque
     silhouette = cv2.bitwise_and(frame, frame, mask=mask)
 
@@ -115,14 +161,17 @@ while True:
     # Normaliser
     normalized = enhanced
 
+    # Charger et redimensionner le logo
+    logo_np = load_logo_with_padding("other-side_logo-fill.png")
+
     # Appliquer une couleur sur la silhouette et une autre sur le fond
     USE_COLOR = True  # False = niveaux de gris, True = rose
     if USE_COLOR:
-        fg_color = np.array([229, 0, 68])   # silhouette : #E50044 (RGB)
-        bg_color = np.array([33, 45, 148])  # fond : #4156A2 (RGB)
+        # fg_color = np.array([229, 0, 68])   # silhouette : #E50044 (rose)
+        # bg_color = np.array([33, 45, 148])  # fond : #212D94 (bleu)
 
-        # fg_color = np.array([33, 45, 148])   # silhouette : #E50044 (RGB)
-        # bg_color = np.array([229, 0, 68])  # fond : #4156A2 (RGB)
+        fg_color = np.array([33, 45, 148])   # silhouette : #212D94 (bleu)
+        bg_color = np.array([229, 0, 68])  # fond : #E50044 (rose)
 
         # Redimensionner le masque à la taille finale
         mask_resized = cv2.resize(mask, (TOTAL_WIDTH, TOTAL_HEIGHT), interpolation=cv2.INTER_NEAREST)
@@ -135,9 +184,14 @@ while True:
     else:
         silhouette_rgb = np.stack([normalized]*3, axis=-1).astype(np.uint8)
 
+    if show_silhouette:
+        grayscale_rgb = silhouette_rgb
+    else:
+        grayscale_rgb = logo_np
+
 
     # Réorganiser selon la disposition des panneaux
-    rearranged = rearrange_for_panels(silhouette_rgb)
+    rearranged = rearrange_for_panels(grayscale_rgb)
     rearranged = np.flip(rearranged, axis=1)
     
     # Aplatir pour envoi
@@ -167,7 +221,7 @@ while True:
     # Affichage debug
     preview = cv2.resize(normalized, (TOTAL_WIDTH * 10, TOTAL_HEIGHT * 10), interpolation=cv2.INTER_NEAREST)
     cv2.putText(preview, connection_status, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-    cv2.flip(preview, 1, preview)
+    #cv2.flip(preview, 1, preview)
     cv2.imshow("Silhouette niveau de gris", preview)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
