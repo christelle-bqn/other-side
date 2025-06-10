@@ -5,7 +5,7 @@ import mediapipe as mp
 import socket
 from PIL import Image
 
-### --- CONFIGURATION ---
+# CONFIGURATION
 ESP32_IP = '172.20.10.2'  # IP de l'ESP32
 ESP32_PORT = 1234        # TCP port
 PANEL_WIDTH = 16
@@ -16,12 +16,11 @@ TOTAL_HEIGHT = PANEL_HEIGHT * 2
 NUM_PIXELS = TOTAL_WIDTH * TOTAL_HEIGHT
 BRIGHTNESS_MIN = 10
 SEND_INTERVAL = 1 / 15    # ≈15 FPS
-DELAY_IN_SECONDS = 3     # délai avant d'afficher la silhouette
-DELAY_OUT_SECONDS = 3    # délai avant de revenir au logo
+DELAY_IN_SECONDS = 1     # délai avant d'afficher la silhouette
+DELAY_OUT_SECONDS = 2    # délai avant de revenir au logo
 presence_detected = False
 last_state_change_time = time.time()
 show_silhouette = False
-
 
 # Offsets des panneaux (de 0 à 16 sur une matrice 16x16)
 PANEL_OFFSETS = [
@@ -36,7 +35,7 @@ mp_selfie = mp.solutions.selfie_segmentation
 segmenter = mp_selfie.SelfieSegmentation(model_selection=1)
 
 # Webcam
-cap = cv2.VideoCapture(1)
+cap = cv2.VideoCapture(2)
 # Zoom 
 # cap.set(cv2.CAP_PROP_ZOOM, 50)
 last_send_time = 0
@@ -170,11 +169,11 @@ while True:
     # Appliquer une couleur sur la silhouette et une autre sur le fond
     USE_COLOR = True  # False = niveaux de gris, True = rose
     if USE_COLOR:
-        # fg_color = np.array([229, 0, 68])   # silhouette : #E50044 (RGB)
-        # bg_color = np.array([33, 45, 148])  # fond : #4156A2 (RGB)
+        fg_color = np.array([229, 0, 68])   # silhouette : #E50044 (rose)
+        bg_color = np.array([33, 45, 148])  # fond : #212D94 (bleu)
 
-        fg_color = np.array([33, 45, 148])   # silhouette : #E50044 (RGB)
-        bg_color = np.array([229, 0, 68])  # fond : #4156A2 (RGB)
+        # fg_color = np.array([33, 45, 148])   # silhouette : #212D94 (bleu)
+        # bg_color = np.array([229, 0, 68])  # fond : #E50044 (rose)
 
         # Redimensionner le masque à la taille finale
         mask_resized = cv2.resize(mask, (TOTAL_WIDTH, TOTAL_HEIGHT), interpolation=cv2.INTER_NEAREST)
