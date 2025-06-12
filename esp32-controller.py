@@ -28,7 +28,7 @@ PANEL_WIDTH, PANEL_HEIGHT      = 16, 16
 TOTAL_WIDTH, TOTAL_HEIGHT      = PANEL_WIDTH*2, PANEL_HEIGHT*2
 NUM_PIXELS                     = TOTAL_WIDTH * TOTAL_HEIGHT
 BRIGHT_MIN                     = 10
-FPS                            = 15
+FPS                            = 30
 SEND_INTERVAL                  = 1 / FPS
 
 mp_selfie = mp.solutions.selfie_segmentation
@@ -37,6 +37,10 @@ mp_selfie = mp.solutions.selfie_segmentation
 preview_queue = queue.Queue()
 # Event pour arrêter tous les threads proprement
 stop_event = threading.Event()
+# Dictionnaire partagé pour suivre l'état show_silh de chaque ESP32
+silhouette_states = {}
+# Lock pour protéger l'accès au dictionnaire partagé
+silhouette_lock = threading.Lock()
 
 def connect_to_esp32(ip, port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -101,6 +105,8 @@ def esp32_worker(name, cfg):
     presence = False
     show_silh = False
     last_sw = time.time()
+    # Stockage temporaire de l'image colored
+    current_colored = None
 
     with mp_selfie.SelfieSegmentation(model_selection=1) as segmenter:
         while not stop_event.is_set():
@@ -128,6 +134,12 @@ def esp32_worker(name, cfg):
                 if show_silh and now - last_sw >= 2:
                     show_silh = False
 
+            # Mise à jour de l'état show_silh dans le dictionnaire partagé
+            with silhouette_lock:
+                silhouette_states[name] = show_silh
+                # Vérifier si les deux ESP32 sont en mode silhouette
+                both_in_silhouette = all(silhouette_states.values()) and len(silhouette_states) == 2
+
             sil = cv2.bitwise_and(frame, frame, mask=mask)
             small = cv2.resize(sil, (TOTAL_WIDTH, TOTAL_HEIGHT))
             gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
@@ -141,7 +153,28 @@ def esp32_worker(name, cfg):
             colored[m2] = (enh[m2,None] * (fg/255)).astype(np.uint8)
             colored[~m2] = bg
 
-            final = colored if show_silh else logo
+            # Stocker l'image colored actuelle
+            current_colored = colored
+
+            # Déterminer quelle image envoyer
+            if both_in_silhouette:
+                # Trouver l'autre ESP32
+                other_name = next(n for n in ESP32_CONFIGS.keys() if n != name)
+                # Utiliser l'image de l'autre ESP32 si disponible
+                with silhouette_lock:
+                    if hasattr(esp32_worker, 'colored_images') and other_name in esp32_worker.colored_images:
+                        final = esp32_worker.colored_images[other_name]
+                    else:
+                        final = colored
+            else:
+                final = colored if show_silh else logo
+
+            # Stocker l'image colored pour l'autre ESP32
+            if show_silh:
+                if not hasattr(esp32_worker, 'colored_images'):
+                    esp32_worker.colored_images = {}
+                esp32_worker.colored_images[name] = colored
+
             buf = rearrange(final)
             data = (buf >>2).astype(np.uint8)
             flat_data = data.flatten().tolist()
@@ -163,6 +196,9 @@ def esp32_worker(name, cfg):
             preview_queue.put((name, preview, status))
 
     # cleanup de fin de thread
+    with silhouette_lock:
+        if name in silhouette_states:
+            del silhouette_states[name]
     if sock:
         try:
             sock.send(bytearray([0]*NUM_PIXELS*3))
