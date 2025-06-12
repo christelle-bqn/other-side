@@ -21,15 +21,14 @@ esp32 = {
     }
 }
 
-
 PANEL_WIDTH, PANEL_HEIGHT = 16, 16
 TOTAL_WIDTH, TOTAL_HEIGHT = PANEL_WIDTH * 2, PANEL_HEIGHT * 2
 NUM_PIXELS = TOTAL_WIDTH * TOTAL_HEIGHT
 BRIGHTNESS_MIN = 10
-SEND_INTERVAL = 1 / 1
+SEND_INTERVAL = 1 / 15 # 15 fps
 
 mp_selfie = mp.solutions.selfie_segmentation
-segmenter = mp_selfie.SelfieSegmentation(model_selection=1)
+#segmenter = mp_selfie.SelfieSegmentation(model_selection=1) # Deplacer dans la fonction main
 
 def connect_to_esp32(esp32_ip, esp32_port):
     try:
@@ -47,7 +46,11 @@ def zoom_frame(frame, zoom_factor=1.5):
     start_x = (w - new_w) // 2
     start_y = (h - new_h) // 2
     cropped = frame[start_y:start_y+new_h, start_x:start_x+new_w]
-    return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
+
+    ## return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR) 
+    return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_NEAREST) # a tester
+
+
 
 def load_logo(path):
     img = Image.open(path).convert("RGB")
@@ -64,17 +67,19 @@ def rearrange(image):
     for panel_idx, (ox, oy) in enumerate(PANEL_OFFSETS):
         panel = image[oy:oy + PANEL_HEIGHT, ox:ox + PANEL_WIDTH]
         if panel_idx in [0, 1]:
-            panel = np.rot90(panel, k=0.5, axes=(0, 1))
+            # panel = np.rot90(panel, k=0.5, axes=(0, 1))
+            panel = np.rot90(panel, k=1, axes=(0, 1))  # k0.5 = valeur interdite
+
         elif panel_idx in [2, 3]:
             panel = np.flip(panel, axis=1)
             panel = np.flip(panel, axis=0)
-            panel = np.rot90(panel, k=0.5, axes=(0, 1))
+            # panel = np.rot90(panel, k=0.5, axes=(0, 1))
+            panel = np.rot90(panel, k=2, axes=(0, 1))  
         output[oy:oy + PANEL_HEIGHT, ox:ox + PANEL_WIDTH] = panel
     return np.flip(output, axis=1)
 
 
 def main(sock, camera_index, logo_path, name):
-        
     try:
         cap = cv2.VideoCapture(camera_index)
         logo_np = load_logo(logo_path)
@@ -82,10 +87,16 @@ def main(sock, camera_index, logo_path, name):
         presence_detected = False
         show_silhouette = False
         last_state_change_time = time.time()
+        segmenter = mp_selfie.SelfieSegmentation(model_selection=1) # Deplacer dans la fonction main
     except Exception as e:
         print(f"[{name}] Send error: {e}")
+        return
 
     while True:
+        if not cap.isOpened():
+            print(f"[{name}] Camera index {camera_index} not available.")
+            return
+
         ret, frame = cap.read()
         if not ret:
             continue
@@ -132,6 +143,10 @@ def main(sock, camera_index, logo_path, name):
 
         final_img = colored if show_silhouette else logo_np
         rearranged = rearrange(final_img)
+        
+        # Convertir de 8 bits (0-255) à 5 bits (0-31)
+        rearranged = (rearranged >> 3).astype(np.uint8)  # Division par 8 (2^3) pour passer de 8 à 5 bits
+        
         flat_data = rearranged.flatten().tolist()
 
         if time.time() - last_send_time >= SEND_INTERVAL:
@@ -141,6 +156,13 @@ def main(sock, camera_index, logo_path, name):
                 last_send_time = time.time()
             except Exception as e:
                 print(f"[{name}] Send error: {e}")
+                sock.close()
+                print(f"[{name}] Attempting to reconnect...") #reconnect to esp32
+                sock = connect_to_esp32(esp32_info["ip"], esp32_info["port"])
+                if not sock:
+                    print(f"[{name}] Reconnection failed, exiting...")
+                    return
+                print(f"[{name}] Reconnected successfully")
 
 def launch_main_for_esp32(esp32_name, esp32_info):
     print(f"[{esp32_name}] Connecting to ESP32...")
