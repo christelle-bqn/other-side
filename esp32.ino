@@ -2,8 +2,10 @@
 #include <FastLED.h>
 
 // WiFi identifiants
-const char* ssid = "iPhone de Christelle";
-const char* password = "chuu1002";
+const char* ssid1 = "iPhone de Christelle";
+const char* password1 = "chuu1002";
+const char* ssid2 = "iPhone de Niko";
+const char* password2 = "hipopotam";
 
 // LED configuration
 #define PANEL_WIDTH 16
@@ -65,6 +67,52 @@ void precalculateXYToIndex() {
     }
 }
 
+// Fonction pour essayer de se connecter aux réseaux WiFi
+bool connectToWiFi() {
+    // Essai du premier réseau
+    Serial.print("Tentative de connexion à ");
+    Serial.println(ssid1);
+    WiFi.begin(ssid1, password1);
+    
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(500);
+        Serial.print(".");
+        attempts++;
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\nConnecté au premier réseau WiFi");
+        Serial.print("IP Address: ");
+        Serial.println(WiFi.localIP());
+        return true;
+    }
+    
+    // Si le premier réseau échoue, essai du second
+    Serial.print("\nÉchec de la première connexion. Tentative de connexion à ");
+    Serial.println(ssid2);
+    WiFi.disconnect();
+    delay(1000);
+    WiFi.begin(ssid2, password2);
+    
+    attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(500);
+        Serial.print(".");
+        attempts++;
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\nConnecté au second réseau WiFi");
+        Serial.print("IP Address: ");
+        Serial.println(WiFi.localIP());
+        return true;
+    }
+    
+    Serial.println("\nÉchec de la connexion aux deux réseaux");
+    return false;
+}
+
 void setup() {
     Serial.begin(115200);
     delay(1000); 
@@ -80,15 +128,10 @@ void setup() {
     FastLED.show();
     Serial.println("LEDs initialized");
 
-    WiFi.begin(ssid, password);
-    Serial.print("Connecting to WiFi");
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
+    if (!connectToWiFi()) {
+        Serial.println("Impossible de se connecter à un réseau WiFi. Redémarrage...");
+        ESP.restart();
     }
-    Serial.println("\nConnected to WiFi");
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
 
     server.begin();
     Serial.print("TCP Server started on port ");
@@ -97,9 +140,11 @@ void setup() {
 
 void loop() {
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("WiFi connection lost. Reconnecting...");
-        WiFi.reconnect();
-        delay(5000);
+        Serial.println("WiFi connection lost. Tentative de reconnexion...");
+        if (!connectToWiFi()) {
+            Serial.println("Échec de la reconnexion. Redémarrage...");
+            ESP.restart();
+        }
         return;
     }
 

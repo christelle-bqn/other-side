@@ -10,13 +10,13 @@ import queue
 # --- Config ESP32 ---
 ESP32_CONFIGS = {
     "esp32_1": {
-        "ip": "172.20.10.2", 
+        "ip": "172.20.10.3", 
         "port": 1234, 
         "camera_index": 1, 
         "logo_path": 
         "other-side_logo-fill.png"},
     "esp32_2": {
-        "ip": "172.20.10.3", 
+        "ip": "172.20.10.2", 
         "port": 1235, 
         "camera_index": 0, 
         "logo_path": "other-side_logo-fill.png"
