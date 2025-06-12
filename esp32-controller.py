@@ -126,12 +126,12 @@ def esp32_worker(name, cfg):
             if ratio > 0.05:
                 if not presence:
                     presence, last_sw = True, now
-                if not show_silh and now - last_sw >= 1:
+                if not show_silh and now:
                     show_silh = True
             else:
                 if presence:
                     presence, last_sw = False, now
-                if show_silh and now - last_sw >= 2:
+                if show_silh and now:
                     show_silh = False
 
             # Mise à jour de l'état show_silh dans le dictionnaire partagé
