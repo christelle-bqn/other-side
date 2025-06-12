@@ -70,22 +70,31 @@ def load_logo(path):
     return np.array(bg)
 
 def rearrange(image):
-    PANEL_OFFSETS = [(16, 16), (0, 16), (0, 0), (16, 0)]
+    # Offsets corrigés pour correspondre à la disposition physique
+    # (x, y) pour chaque panneau dans l'ordre : 2,3,1,0
+    PANEL_OFFSETS = [
+        (0, 0),      # Panel 2 (haut gauche)
+        (16, 0),     # Panel 3 (haut droite)
+        (0, 16),     # Panel 1 (bas gauche)
+        (16, 16)     # Panel 0 (bas droite)
+    ]
+    
     output = np.zeros((TOTAL_HEIGHT, TOTAL_WIDTH, 3), dtype=np.uint8)
+    
     for panel_idx, (ox, oy) in enumerate(PANEL_OFFSETS):
         panel = image[oy:oy + PANEL_HEIGHT, ox:ox + PANEL_WIDTH]
-        if panel_idx in [0, 1]:
-            panel = np.rot90(panel, k=0.5, axes=(0, 1))  # k0.5 = valeur interdite
-            # panel = np.rot90(panel, k=1, axes=(0, 1))  # k0.5 = valeur interdite
 
-
-        elif panel_idx in [2, 3]:
-            panel = np.flip(panel, axis=1)
-            panel = np.flip(panel, axis=0)
-            panel = np.rot90(panel, k=0.5, axes=(0, 1))
-            # panel = np.rot90(panel, k=2, axes=(0, 1))  
+        
+        if panel_idx in [0, 1]:  # Panneaux du haut (2,3)
+            panel = np.rot90(panel, k=1, axes=(0, 1))  
+            
+        if panel_idx in [2, 3]:  # Panneaux du bas (1,0)
+            panel = np.rot90(panel, k=-1, axes=(0, 1))  
+    
         output[oy:oy + PANEL_HEIGHT, ox:ox + PANEL_WIDTH] = panel
-    return np.flip(output, axis=1)
+    
+    return np.flip(output, axis=1)  # Suppression du flip final car les transformations sont déjà correctes
+
 
 def esp32_worker(name, cfg):
     """Thread qui capture, segmente, encode et envoie,
@@ -168,7 +177,7 @@ def esp32_worker(name, cfg):
                         final = colored
             else:
                 final = colored if show_silh else logo
-
+            
             # Stocker l'image colored pour l'autre ESP32
             if show_silh:
                 if not hasattr(esp32_worker, 'colored_images'):
