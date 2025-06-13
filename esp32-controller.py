@@ -10,13 +10,15 @@ import queue
 # --- Config ESP32 ---
 ESP32_CONFIGS = {
     "esp32_1": {
-        "ip": "172.20.10.3", 
+        #"ip": "172.20.10.3", 
+        "ip": "172.20.10.2",
         "port": 1234, 
         "camera_index": 1, 
         "logo_path": 
         "other-side_logo-fill.png"},
     "esp32_2": {
-        "ip": "172.20.10.2", 
+        # "ip": "172.20.10.2",
+        "ip": "172.20.10.3",  
         "port": 1235, 
         "camera_index": 0, 
         "logo_path": "other-side_logo-fill.png"
@@ -125,14 +127,14 @@ def esp32_worker(name, cfg):
 
             # — segmentation & transformation —
             frame = cv2.flip(frame, 1)
-            frame = zoom_frame(frame, zoom_factor=2.5)
+            frame = zoom_frame(frame, zoom_factor=1.5)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res = segmenter.process(rgb)
             mask = (res.segmentation_mask>0.5).astype(np.uint8) if res.segmentation_mask is not None else np.zeros(frame.shape[:2], np.uint8)
 
             ratio = mask.sum()/(mask.shape[0]*mask.shape[1])
             now = time.time()
-            if ratio > 0.05:
+            if ratio > 0.10:
                 if not presence:
                     presence, last_sw = True, now
                 if not show_silh and now:
